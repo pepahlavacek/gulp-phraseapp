@@ -73,53 +73,54 @@
   };
 
   exports.upload = function(options) {
-    var id, path, ref, results;
+    var uploadPromises;
     if (options == null) {
       options = {};
     }
     request = getAuthRequest(options);
     if (options.files) {
-      ref = options.files;
-      results = [];
-      for (id in ref) {
-        path = ref[id];
-        results.push((function(id, path) {
-          return request({
-            url: "/uploads",
-            method: 'POST',
-            formData: {
-              file: fs.createReadStream(path),
-              locale_id: id,
-              file_format: options.file_format ? options.file_format : 'nested_json'
-            }
-          }, function(err, res) {
-            if (res.statusCode === 201) {
-              return log("Uploaded " + path + " (" + id + ")");
-            } else {
-              return error("Upload of " + path + " failed. Server responded with", res.statusCode);
-            }
-          });
-        })(id, path));
-      }
-      return results;
+      uploadPromises = Object.keys(options.files).map(function(id) {
+        return new Promise((function(_this) {
+          return function(resolve, reject) {
+            return request({
+              url: "/uploads",
+              method: 'POST',
+              formData: {
+                file: fs.createReadStream(options.files[id]),
+                locale_id: id,
+                file_format: options.file_format ? options.file_format : 'nested_json'
+              }
+            }, function(err, res) {
+              if (res.statusCode === 201) {
+                log("Uploaded " + options.files[id] + " (" + id + ")");
+                return resolve();
+              } else {
+                error("Upload of " + options.files[id] + " failed. Server responded with", res.statusCode);
+                return reject();
+              }
+            });
+          };
+        })(this));
+      });
+      return Promise.all(uploadPromises);
     } else {
       return _.pipeline(_.reduce({}, function(acc, file) {
         acc[file.relative.split('.')[0]] = file;
         return acc;
       }), _.flatMap(function(files) {
         return _(request("/locales")).reduce1(_.add).flatMap(function(res) {
-          var locales, name;
+          var id, locales, name;
           locales = JSON.parse(res);
           return _((function() {
-            var i, len, ref1, results1;
-            results1 = [];
+            var i, len, ref, results;
+            results = [];
             for (i = 0, len = locales.length; i < len; i++) {
-              ref1 = locales[i], id = ref1.id, name = ref1.name;
+              ref = locales[i], id = ref.id, name = ref.name;
               if (files[name]) {
-                results1.push([files[name], id]);
+                results.push([files[name], id]);
               }
             }
-            return results1;
+            return results;
           })());
         });
       }), _.each(function(arg) {

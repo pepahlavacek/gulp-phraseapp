@@ -44,20 +44,25 @@ exports.upload = (options={}) ->
   request = getAuthRequest(options)
 
   if options.files
-    for id, path of options.files
-      do (id, path) ->
+    uploadPromises = Object.keys(options.files).map (id) ->
+      new Promise((resolve, reject) =>
         request
           url: "/uploads"
           method: 'POST'
           formData:
-            file: fs.createReadStream(path)
+            file: fs.createReadStream(options.files[id])
             locale_id: id
             file_format: if options.file_format then options.file_format else 'nested_json'
-        , (err, res) ->
-          if res.statusCode is 201
-            log "Uploaded #{path} (#{id})"
-          else
-            error "Upload of #{path} failed. Server responded with", res.statusCode
+          , (err, res) ->
+            if res.statusCode is 201
+              log "Uploaded #{options.files[id]} (#{id})"
+              resolve()
+            else
+              error "Upload of #{options.files[id]} failed. Server responded with", res.statusCode
+              reject()
+      )
+
+    Promise.all(uploadPromises)
   else
     _.pipeline(
       _.reduce({}, (acc, file) ->
